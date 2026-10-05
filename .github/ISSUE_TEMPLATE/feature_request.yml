@@ -1,0 +1,12 @@
+name: Feature Request
+description: Suggest an idea or enhancement for DataSharedLib
+title: "[FEATURE]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: feature-description
+    attributes:
+      label: Feature Description
+      description: Describe the feature you would like to see in DataSharedLib.
+    validations:
+      required: true
