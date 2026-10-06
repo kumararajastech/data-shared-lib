@@ -2,6 +2,8 @@ namespace DataSharedLib.Exceptions;
 
 public class ConnectionException : DatabaseException
 {
-    public ConnectionException(string message) : base(message) { }
-    public ConnectionException(string message, Exception innerException) : base(message, innerException) { }
+    public ConnectionException(string message, int? sqlErrorNumber = null, Exception? innerException = null)
+        : base(message, sqlErrorNumber, innerException)
+    {
+    }
 }

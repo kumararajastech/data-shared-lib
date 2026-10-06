@@ -5,19 +5,18 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <LangVersion>13.0</LangVersion>
-    <Title>DataSharedLib</Title>
-    <Description>Enterprise .NET 10 SQL Server Class Library featuring connection resilience, dynamic CRUD, bulk inserts, and stored procedure execution.</Description>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <PackageId>DataSharedLib</PackageId>
     <Version>1.0.0</Version>
-    <Authors>DataSharedLib Team</Authors>
-    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <Authors>DataSharedLib Contributors</Authors>
+    <Description>.NET 10 SQL Server Shared Library providing query, CRUD, bulk insert, and stored procedure services.</Description>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Data.SqlClient" Version="5.2.2" />
-    <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="9.0.0" />
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.0" />
-    <PackageReference Include="Microsoft.Extensions.Options" Version="9.0.0" />
-    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="9.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="10.0.0-preview.1.25080.5" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.0-preview.1.25080.5" />
+    <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.0-preview.1.25080.5" />
   </ItemGroup>
 
 </Project>

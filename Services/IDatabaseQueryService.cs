@@ -5,6 +5,6 @@ using DataSharedLib.Models.Responses;
 
 public interface IDatabaseQueryService
 {
-    Task<QueryResponse> ExecuteQueryAsync(ExecuteQueryRequest request, CancellationToken cancellationToken = default);
+    Task<QueryResponse<T>> QueryAsync<T>(ExecuteQueryRequest request, Func<IReadOnlyDictionary<string, object?>, T> mapper, CancellationToken cancellationToken = default);
     Task<T?> ExecuteScalarAsync<T>(ExecuteQueryRequest request, CancellationToken cancellationToken = default);
 }

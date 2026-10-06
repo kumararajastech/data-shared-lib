@@ -1,34 +1,34 @@
 namespace DataSharedLib.Configuration;
 
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using DataSharedLib.Connection;
 using DataSharedLib.Services;
 using DataSharedLib.Validation;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
 
 public static class ServiceCollectionExtensions
 {
     public static IServiceCollection AddDataSharedLib(this IServiceCollection services, IConfiguration configuration)
     {
         services.Configure<DatabaseConnectionOptions>(configuration.GetSection(DatabaseConnectionOptions.SectionName));
-        return services.AddDataSharedLibCore();
+        RegisterCoreServices(services);
+        return services;
     }
 
     public static IServiceCollection AddDataSharedLib(this IServiceCollection services, Action<DatabaseConnectionOptions> configureOptions)
     {
         services.Configure(configureOptions);
-        return services.AddDataSharedLibCore();
+        RegisterCoreServices(services);
+        return services;
     }
 
-    private static IServiceCollection AddDataSharedLibCore(this IServiceCollection services)
+    private static void RegisterCoreServices(IServiceCollection services)
     {
         services.AddSingleton<IRequestValidator, RequestValidator>();
-        services.AddSingleton<IDatabaseConnectionFactory, DatabaseConnectionFactory>();
-        services.AddTransient<IDatabaseQueryService, DatabaseQueryService>();
-        services.AddTransient<IDatabaseCrudService, DatabaseCrudService>();
-        services.AddTransient<IDatabaseBulkService, DatabaseBulkService>();
-        services.AddTransient<IStoredProcedureService, StoredProcedureService>();
-
-        return services;
+        services.AddScoped<IDatabaseConnectionFactory, DatabaseConnectionFactory>();
+        services.AddScoped<IDatabaseQueryService, DatabaseQueryService>();
+        services.AddScoped<IDatabaseCrudService, DatabaseCrudService>();
+        services.AddScoped<IDatabaseBulkService, DatabaseBulkService>();
+        services.AddScoped<IStoredProcedureService, StoredProcedureService>();
     }
 }

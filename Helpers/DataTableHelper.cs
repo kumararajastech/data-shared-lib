@@ -5,27 +5,29 @@ using System.Reflection;
 
 public static class DataTableHelper
 {
-    public static DataTable ToDataTable<T>(IEnumerable<T> items) where T : class
+    public static DataTable ToDataTable<T>(IEnumerable<T> items)
     {
-        var dataTable = new DataTable(typeof(T).Name);
-        PropertyInfo[] properties = typeof(T).GetProperties(BindingFlags.Public | BindingFlags.Instance);
+        var table = new DataTable(typeof(T).Name);
+        var props = typeof(T).GetProperties(BindingFlags.Public | BindingFlags.Instance)
+                             .Where(p => p.CanRead)
+                             .ToArray();
 
-        foreach (var prop in properties)
+        foreach (var prop in props)
         {
             var propType = Nullable.GetUnderlyingType(prop.PropertyType) ?? prop.PropertyType;
-            dataTable.Columns.Add(prop.Name, propType);
+            table.Columns.Add(prop.Name, propType);
         }
 
         foreach (var item in items)
         {
-            var values = new object?[properties.Length];
-            for (int i = 0; i < properties.Length; i++)
+            var values = new object?[props.Length];
+            for (int i = 0; i < props.Length; i++)
             {
-                values[i] = properties[i].GetValue(item, null) ?? DBNull.Value;
+                values[i] = props[i].GetValue(item, null) ?? DBNull.Value;
             }
-            dataTable.Rows.Add(values);
+            table.Rows.Add(values);
         }
 
-        return dataTable;
+        return table;
     }
 }

@@ -2,7 +2,7 @@ namespace DataSharedLib.Models.Requests;
 
 public class DeleteRequest
 {
-    public required string TableName { get; set; }
-    public required string WhereClause { get; set; }
-    public Dictionary<string, object?>? Parameters { get; set; }
+    public string TableName { get; set; } = string.Empty;
+    public string WhereClause { get; set; } = string.Empty;
+    public IReadOnlyDictionary<string, object?>? Parameters { get; set; }
 }

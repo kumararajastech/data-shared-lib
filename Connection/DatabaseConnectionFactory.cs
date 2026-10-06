@@ -1,8 +1,8 @@
 namespace DataSharedLib.Connection;
 
-using DataSharedLib.Exceptions;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Options;
+using DataSharedLib.Exceptions;
 
 public class DatabaseConnectionFactory : IDatabaseConnectionFactory
 {
@@ -17,32 +17,31 @@ public class DatabaseConnectionFactory : IDatabaseConnectionFactory
         }
     }
 
-    public SqlConnection CreateConnection() => new(_options.ConnectionString);
-
-    public async Task<SqlConnection> OpenConnectionAsync(CancellationToken cancellationToken = default)
+    public async Task<SqlConnection> CreateConnectionAsync(CancellationToken cancellationToken = default)
     {
-        var connection = CreateConnection();
-        var attempts = 0;
-
-        while (true)
+        try
         {
-            try
-            {
-                attempts++;
-                await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
-                return connection;
-            }
-            catch (SqlException ex) when (attempts <= _options.MaxRetryCount)
-            {
-                await connection.DisposeAsync().ConfigureAwait(false);
-                await Task.Delay(_options.RetryIntervalMs, cancellationToken).ConfigureAwait(false);
-                connection = CreateConnection();
-            }
-            catch (Exception ex)
-            {
-                await connection.DisposeAsync().ConfigureAwait(false);
-                throw new ConnectionException($"Failed to open database connection after {attempts} attempt(s).", ex);
-            }
+            var connection = new SqlConnection(_options.ConnectionString);
+            await connection.OpenAsync(cancellationToken);
+            return connection;
+        }
+        catch (SqlException ex)
+        {
+            throw new ConnectionException($"Failed to open SQL Server connection: {ex.Message}", ex.Number, ex);
+        }
+    }
+
+    public SqlConnection CreateConnection()
+    {
+        try
+        {
+            var connection = new SqlConnection(_options.ConnectionString);
+            connection.Open();
+            return connection;
+        }
+        catch (SqlException ex)
+        {
+            throw new ConnectionException($"Failed to open SQL Server connection: {ex.Message}", ex.Number, ex);
         }
     }
 }

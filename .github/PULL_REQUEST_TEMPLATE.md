@@ -1,11 +1,8 @@
 ## Description
-Briefly describe the changes introduced by this pull request.
-
-## Related Issues
-Closes #
+Briefly describe the changes introduced to `DataSharedLib`.
 
 ## Checklist
-- [ ] Code builds cleanly on .NET 10 with zero warnings.
-- [ ] Added/updated unit tests covering new features or bug fixes.
-- [ ] Updated XML documentation comments for public interfaces/classes.
-- [ ] Verified compliance with guidelines in `AGENTS.md`.
+- [ ] Code follows C# 13 and .NET 10 standards
+- [ ] All database queries are fully parameterized
+- [ ] Added/updated unit tests
+- [ ] Updated documentation and `AGENTS.md` if applicable

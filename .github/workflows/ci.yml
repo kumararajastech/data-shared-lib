@@ -9,22 +9,19 @@ on:
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
-
     steps:
-    - name: Checkout Code
-      uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Setup .NET 10 SDK
-      uses: actions/setup-dotnet@v4
-      with:
-        dotnet-version: '10.0.x'
-        quality: 'preview'
+      - name: Setup .NET 10 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
 
-    - name: Restore Dependencies
-      run: dotnet restore DataSharedLib.csproj
+      - name: Restore dependencies
+        run: dotnet restore DataSharedLib.csproj
 
-    - name: Build Project
-      run: dotnet build DataSharedLib.csproj --configuration Release --no-restore
+      - name: Build Library
+        run: dotnet build DataSharedLib.csproj --configuration Release --no-restore
 
-    - name: Pack Package
-      run: dotnet pack DataSharedLib.csproj --configuration Release --no-build --output ./nupkg
+      - name: Pack NuGet Package
+        run: dotnet pack DataSharedLib.csproj --configuration Release --no-build --output ./nupkg

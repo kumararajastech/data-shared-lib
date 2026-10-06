@@ -1,13 +1,14 @@
 namespace DataSharedLib.Services;
 
 using System.Data;
+using Microsoft.Data.SqlClient;
+
 using DataSharedLib.Connection;
 using DataSharedLib.Exceptions;
 using DataSharedLib.Helpers;
 using DataSharedLib.Models.Requests;
 using DataSharedLib.Models.Responses;
 using DataSharedLib.Validation;
-using Microsoft.Data.SqlClient;
 
 public class StoredProcedureService : IStoredProcedureService
 {
@@ -20,75 +21,71 @@ public class StoredProcedureService : IStoredProcedureService
         _validator = validator;
     }
 
-    public async Task<StoredProcedureResponse> ExecuteAsync(StoredProcedureRequest request, CancellationToken cancellationToken = default)
+    public async Task<StoredProcedureResponse> ExecuteStoredProcedureAsync(StoredProcedureRequest request, CancellationToken cancellationToken = default)
     {
-        _validator.ValidateStoredProcedureRequest(request);
-        var watch = System.Diagnostics.Stopwatch.StartNew();
+        _validator.ValidateStoredProcedure(request);
+
+        var startTime = DateTime.UtcNow;
+        var sanitizedSpName = _validator.SanitizeIdentifier(request.ProcedureName);
+
+        await using var connection = await _connectionFactory.CreateConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+
+        command.CommandText = sanitizedSpName;
+        command.CommandType = CommandType.StoredProcedure;
+        command.CommandTimeout = request.TimeoutSeconds;
+
+        if (request.Parameters != null)
+        {
+            command.Parameters.AddRange(SqlParameterHelper.ToSqlParameters(request.Parameters));
+        }
+
+        var returnParam = command.Parameters.Add("@RETURN_VALUE", SqlDbType.Int);
+        returnParam.Direction = ParameterDirection.ReturnValue;
 
         try
         {
-            await using var connection = await _connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
-            await using var command = connection.CreateCommand();
-            command.CommandText = _validator.SanitizeIdentifier(request.ProcedureName);
-            command.CommandType = CommandType.StoredProcedure;
-            command.CommandTimeout = request.TimeoutSeconds ?? 30;
-
-            if (request.Parameters != null)
-            {
-                command.Parameters.AddRange(SqlParameterHelper.ToSqlParameters(request.Parameters));
-            }
-
-            var outParams = new List<SqlParameter>();
-            if (request.OutputParameters != null)
-            {
-                foreach (var kvp in request.OutputParameters)
-                {
-                    var p = new SqlParameter(kvp.Key, kvp.Value) { Direction = ParameterDirection.Output };
-                    outParams.Add(p);
-                    command.Parameters.Add(p);
-                }
-            }
-
-            var returnParam = command.Parameters.Add(new SqlParameter("@ReturnValue", SqlDbType.Int)
-            {
-                Direction = ParameterDirection.ReturnValue
-            });
-
-            await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
-            var resultTables = new List<List<Dictionary<string, object?>>>();
+            var resultSets = new List<IReadOnlyList<IReadOnlyDictionary<string, object?>>>();
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
 
             do
             {
-                var tableRows = new List<Dictionary<string, object?>>();
-                while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+                var grid = new List<IReadOnlyDictionary<string, object?>>();
+                while (await reader.ReadAsync(cancellationToken))
                 {
                     var row = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
                     for (int i = 0; i < reader.FieldCount; i++)
                     {
-                        var val = reader.GetValue(i);
-                        row[reader.GetName(i)] = val == DBNull.Value ? null : val;
+                        row[reader.GetName(i)] = reader.IsDBNull(i) ? null : reader.GetValue(i);
                     }
-                    tableRows.Add(row);
+                    grid.Add(row);
                 }
-                resultTables.Add(tableRows);
-            } while (await reader.NextResultAsync(cancellationToken).ConfigureAwait(false));
+                resultSets.Add(grid);
+            } while (await reader.NextResultAsync(cancellationToken));
 
-            var outputValues = outParams.ToDictionary(p => p.ParameterName, p => p.Value == DBNull.Value ? null : p.Value);
-            int returnCode = returnParam.Value != DBNull.Value ? (int)returnParam.Value : 0;
+            var outputParams = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+            foreach (SqlParameter p in command.Parameters)
+            {
+                if (p.Direction == ParameterDirection.Output || p.Direction == ParameterDirection.InputOutput)
+                {
+                    outputParams[p.ParameterName.TrimStart('@')] = p.Value == DBNull.Value ? null : p.Value;
+                }
+            }
 
-            watch.Stop();
+            int returnVal = returnParam.Value is int iVal ? iVal : 0;
+
             return new StoredProcedureResponse
             {
                 Success = true,
-                ReturnCode = returnCode,
-                OutputValues = outputValues,
-                ResultGrids = resultTables,
-                ExecutionTimeMs = watch.ElapsedMilliseconds
+                ResultSets = resultSets,
+                OutputParameters = outputParams,
+                ReturnValue = returnVal,
+                ExecutionTime = DateTime.UtcNow - startTime
             };
         }
-        catch (Exception ex) when (ex is not DatabaseException)
+        catch (SqlException ex)
         {
-            throw new ExecutionException($"Stored procedure execution failed: {ex.Message}", ex);
+            throw new ExecutionException($"Stored procedure execution failed: {ex.Message}", sanitizedSpName, ex.Number, ex);
         }
     }
 }

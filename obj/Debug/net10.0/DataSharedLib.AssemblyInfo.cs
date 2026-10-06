@@ -11,12 +11,12 @@
 using System;
 using System.Reflection;
 
-[assembly: System.Reflection.AssemblyCompanyAttribute("DataSharedLib Team")]
+[assembly: System.Reflection.AssemblyCompanyAttribute("DataSharedLib Contributors")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
-[assembly: System.Reflection.AssemblyDescriptionAttribute("Enterprise .NET 10 SQL Server Class Library featuring connection resilience, dyna" +
-    "mic CRUD, bulk inserts, and stored procedure execution.")]
+[assembly: System.Reflection.AssemblyDescriptionAttribute(".NET 10 SQL Server Shared Library providing query, CRUD, bulk insert, and stored " +
+    "procedure services.")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+22a8963c0b1ecbccf7b28b7b5c99dd9a97fab8cf")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+670c821d1f9a920f26b267bf2fa41c4514d789d5")]
 [assembly: System.Reflection.AssemblyProductAttribute("DataSharedLib")]
 [assembly: System.Reflection.AssemblyTitleAttribute("DataSharedLib")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

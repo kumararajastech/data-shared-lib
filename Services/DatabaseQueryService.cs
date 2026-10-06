@@ -1,13 +1,14 @@
 namespace DataSharedLib.Services;
 
 using System.Data;
+using Microsoft.Data.SqlClient;
+
 using DataSharedLib.Connection;
 using DataSharedLib.Exceptions;
 using DataSharedLib.Helpers;
 using DataSharedLib.Models.Requests;
 using DataSharedLib.Models.Responses;
 using DataSharedLib.Validation;
-using Microsoft.Data.SqlClient;
 
 public class DatabaseQueryService : IDatabaseQueryService
 {
@@ -20,70 +21,76 @@ public class DatabaseQueryService : IDatabaseQueryService
         _validator = validator;
     }
 
-    public async Task<QueryResponse> ExecuteQueryAsync(ExecuteQueryRequest request, CancellationToken cancellationToken = default)
+    public async Task<QueryResponse<T>> QueryAsync<T>(ExecuteQueryRequest request, Func<IReadOnlyDictionary<string, object?>, T> mapper, CancellationToken cancellationToken = default)
     {
-        _validator.ValidateExecuteQueryRequest(request);
-        var watch = System.Diagnostics.Stopwatch.StartNew();
+        _validator.ValidateExecuteQuery(request);
+
+        var startTime = DateTime.UtcNow;
+        var items = new List<T>();
+
+        await using var connection = await _connectionFactory.CreateConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+
+        command.CommandText = request.Sql;
+        command.CommandTimeout = request.CommandTimeoutSeconds ?? 30;
+
+        if (request.Parameters != null)
+        {
+            command.Parameters.AddRange(SqlParameterHelper.ToSqlParameters(request.Parameters));
+        }
 
         try
         {
-            await using var connection = await _connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
-            await using var command = connection.CreateCommand();
-            command.CommandText = request.SqlText;
-            command.CommandTimeout = request.TimeoutSeconds ?? 30;
-
-            if (request.Parameters != null)
-            {
-                command.Parameters.AddRange(SqlParameterHelper.ToSqlParameters(request.Parameters));
-            }
-
-            await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
-            var rows = new List<Dictionary<string, object?>>();
-
-            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
             {
                 var row = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
                 for (int i = 0; i < reader.FieldCount; i++)
                 {
-                    var val = reader.GetValue(i);
-                    row[reader.GetName(i)] = val == DBNull.Value ? null : val;
+                    row[reader.GetName(i)] = reader.IsDBNull(i) ? null : reader.GetValue(i);
                 }
-                rows.Add(row);
+                items.Add(mapper(row));
             }
 
-            watch.Stop();
-            return new QueryResponse { Rows = rows, TotalCount = rows.Count, ExecutionTimeMs = watch.ElapsedMilliseconds };
+            var elapsed = DateTime.UtcNow - startTime;
+            return new QueryResponse<T>
+            {
+                Success = true,
+                Data = items,
+                TotalRecords = items.Count,
+                ExecutionTime = elapsed
+            };
         }
-        catch (Exception ex) when (ex is not DatabaseException)
+        catch (SqlException ex)
         {
-            throw new ExecutionException($"Query execution failed: {ex.Message}", ex);
+            throw new ExecutionException($"Query execution failed: {ex.Message}", request.Sql, ex.Number, ex);
         }
     }
 
     public async Task<T?> ExecuteScalarAsync<T>(ExecuteQueryRequest request, CancellationToken cancellationToken = default)
     {
-        _validator.ValidateExecuteQueryRequest(request);
+        _validator.ValidateExecuteQuery(request);
+
+        await using var connection = await _connectionFactory.CreateConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+
+        command.CommandText = request.Sql;
+        command.CommandTimeout = request.CommandTimeoutSeconds ?? 30;
+
+        if (request.Parameters != null)
+        {
+            command.Parameters.AddRange(SqlParameterHelper.ToSqlParameters(request.Parameters));
+        }
 
         try
         {
-            await using var connection = await _connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
-            await using var command = connection.CreateCommand();
-            command.CommandText = request.SqlText;
-            command.CommandTimeout = request.TimeoutSeconds ?? 30;
-
-            if (request.Parameters != null)
-            {
-                command.Parameters.AddRange(SqlParameterHelper.ToSqlParameters(request.Parameters));
-            }
-
-            var result = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
+            var result = await command.ExecuteScalarAsync(cancellationToken);
             if (result == null || result == DBNull.Value) return default;
-
             return (T)Convert.ChangeType(result, typeof(T));
         }
-        catch (Exception ex) when (ex is not DatabaseException)
+        catch (SqlException ex)
         {
-            throw new ExecutionException($"Scalar query execution failed: {ex.Message}", ex);
+            throw new ExecutionException($"Scalar query failed: {ex.Message}", request.Sql, ex.Number, ex);
         }
     }
 }

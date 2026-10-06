@@ -1,24 +1,21 @@
-## Visual Studio / IDE
+# Visual Studio & .NET Build Output
 .vs/
-.idea/
-.vscode/
-*.suo
+bin/
+obj/
 *.user
+*.suo
 *.userosscache
 *.sln.docstates
+*.userprefs
+*.lock.json
 
-## Build Outputs & Binaries
-[Bb]in/
-[Oo]bj/
-out/
-publish/
+# Build Results
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+build/
+
+# NuGet Packages
 *.nupkg
-*.snupkg
-
-## Test Results & Coverage
-TestResults/
-*.changelog
-
-## OS Files
-.DS_Store
-Thumbs.db
+packages/

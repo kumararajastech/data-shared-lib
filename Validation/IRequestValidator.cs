@@ -4,12 +4,12 @@ using DataSharedLib.Models.Requests;
 
 public interface IRequestValidator
 {
-    void ValidateReadRequest(ReadRequest request);
-    void ValidateCreateRequest(CreateRequest request);
-    void ValidateUpdateRequest(UpdateRequest request);
-    void ValidateDeleteRequest(DeleteRequest request);
-    void ValidateExecuteQueryRequest(ExecuteQueryRequest request);
-    void ValidateBulkCreateRequest(BulkCreateRequest request);
-    void ValidateStoredProcedureRequest(StoredProcedureRequest request);
     string SanitizeIdentifier(string identifier);
+    void ValidateRead(ReadRequest request);
+    void ValidateCreate(CreateRequest request);
+    void ValidateUpdate(UpdateRequest request);
+    void ValidateDelete(DeleteRequest request);
+    void ValidateBulkCreate(BulkCreateRequest request);
+    void ValidateExecuteQuery(ExecuteQueryRequest request);
+    void ValidateStoredProcedure(StoredProcedureRequest request);
 }

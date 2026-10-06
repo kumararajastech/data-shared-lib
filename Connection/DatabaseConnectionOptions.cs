@@ -7,5 +7,4 @@ public class DatabaseConnectionOptions
     public string ConnectionString { get; set; } = string.Empty;
     public int CommandTimeoutSeconds { get; set; } = 30;
     public int MaxRetryCount { get; set; } = 3;
-    public int RetryIntervalMs { get; set; } = 1000;
 }

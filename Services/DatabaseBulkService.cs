@@ -1,13 +1,14 @@
 namespace DataSharedLib.Services;
 
 using System.Data;
+using Microsoft.Data.SqlClient;
+
 using DataSharedLib.Connection;
 using DataSharedLib.Exceptions;
 using DataSharedLib.Helpers;
 using DataSharedLib.Models.Requests;
 using DataSharedLib.Models.Responses;
 using DataSharedLib.Validation;
-using Microsoft.Data.SqlClient;
 
 public class DatabaseBulkService : IDatabaseBulkService
 {
@@ -22,47 +23,52 @@ public class DatabaseBulkService : IDatabaseBulkService
 
     public async Task<OperationResponse> BulkInsertAsync(BulkCreateRequest request, CancellationToken cancellationToken = default)
     {
-        _validator.ValidateBulkCreateRequest(request);
-        var watch = System.Diagnostics.Stopwatch.StartNew();
+        _validator.ValidateBulkCreate(request);
+
+        var startTime = DateTime.UtcNow;
+        var sanitizedTable = _validator.SanitizeIdentifier(request.TableName);
+
+        await using var connection = await _connectionFactory.CreateConnectionAsync(cancellationToken);
+        using var bulkCopy = new SqlBulkCopy(connection)
+        {
+            DestinationTableName = sanitizedTable,
+            BatchSize = request.BatchSize,
+            BulkCopyTimeout = request.TimeoutSeconds
+        };
+
+        if (request.ColumnMappings != null)
+        {
+            foreach (var mapping in request.ColumnMappings)
+            {
+                bulkCopy.ColumnMappings.Add(mapping.Key, mapping.Value);
+            }
+        }
 
         try
         {
-            await using var connection = await _connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
-            using var bulkCopy = new SqlBulkCopy(connection, SqlBulkCopyOptions.Default, null)
+            await bulkCopy.WriteToServerAsync(request.Data, cancellationToken);
+            return new OperationResponse
             {
-                DestinationTableName = _validator.SanitizeIdentifier(request.TableName),
-                BatchSize = request.BatchSize,
-                BulkCopyTimeout = request.TimeoutSeconds ?? 60
+                Success = true,
+                RowsAffected = request.Data.Rows.Count,
+                ExecutionTime = DateTime.UtcNow - startTime
             };
-
-            if (request.ColumnMappings != null)
-            {
-                foreach (var map in request.ColumnMappings)
-                {
-                    bulkCopy.ColumnMappings.Add(map.Key, map.Value);
-                }
-            }
-
-            await bulkCopy.WriteToServerAsync(request.DataTable, cancellationToken).ConfigureAwait(false);
-            watch.Stop();
-
-            return new OperationResponse { Success = true, RowsAffected = request.DataTable.Rows.Count, ExecutionTimeMs = watch.ElapsedMilliseconds };
         }
-        catch (Exception ex) when (ex is not DatabaseException)
+        catch (SqlException ex)
         {
-            throw new ExecutionException($"Bulk insert operation failed: {ex.Message}", ex);
+            throw new ExecutionException($"Bulk insert operation failed: {ex.Message}", $"SqlBulkCopy -> {sanitizedTable}", ex.Number, ex);
         }
     }
 
-    public async Task<OperationResponse> BulkInsertAsync<T>(string tableName, IEnumerable<T> items, int batchSize = 5000, CancellationToken cancellationToken = default) where T : class
+    public async Task<OperationResponse> BulkInsertAsync<T>(string tableName, IEnumerable<T> items, int batchSize = 5000, CancellationToken cancellationToken = default)
     {
         var dataTable = DataTableHelper.ToDataTable(items);
         var request = new BulkCreateRequest
         {
             TableName = tableName,
-            DataTable = dataTable,
+            Data = dataTable,
             BatchSize = batchSize
         };
-        return await BulkInsertAsync(request, cancellationToken).ConfigureAwait(false);
+        return await BulkInsertAsync(request, cancellationToken);
     }
 }

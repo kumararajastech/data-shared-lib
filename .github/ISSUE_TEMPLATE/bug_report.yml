@@ -1,21 +1,10 @@
 name: Bug Report
-description: Create a report to help us fix a bug in DataSharedLib.
-labels: [bug]
+description: File a bug report for DataSharedLib
 body:
-  - type: markdown
-    attributes:
-      value: Thank you for reporting an issue!
   - type: textarea
-    id: description
+    id: what-happened
     attributes:
-      label: Bug Description
-      description: Clear description of the issue.
-    validations:
-      required: true
-  - type: input
-    id: dotnet-version
-    attributes:
-      label: .NET SDK Version
-      placeholder: e.g., 10.0.100-preview.1
+      label: What happened?
+      description: Describe the issue or SqlException encountered.
     validations:
       required: true

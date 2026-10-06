@@ -1,0 +1,16 @@
+# DataSharedLib - LLM Prompt Context
+Framework: .NET 10 (`net10.0`), C# 13
+Package: Microsoft.Data.SqlClient 5.2.2
+
+Key Components:
+- Connection/ (IDatabaseConnectionFactory, DatabaseConnectionFactory, DatabaseConnectionOptions)
+- Services/ (IDatabaseQueryService, IDatabaseCrudService, IDatabaseBulkService, IStoredProcedureService)
+- Models/Requests/ & Models/Responses/
+- Validation/ (IRequestValidator, RequestValidator)
+- Exceptions/ (DatabaseException, ConnectionException, ExecutionException)
+- Configuration/ (ServiceCollectionExtensions)
+
+AI Agent Rules:
+- All SQL parameterized.
+- Identifiers regex-sanitized.
+- Async I/O with CancellationToken.

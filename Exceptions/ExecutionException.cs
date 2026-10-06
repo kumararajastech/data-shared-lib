@@ -2,6 +2,11 @@ namespace DataSharedLib.Exceptions;
 
 public class ExecutionException : DatabaseException
 {
-    public ExecutionException(string message) : base(message) { }
-    public ExecutionException(string message, Exception innerException) : base(message, innerException) { }
+    public string SqlStatement { get; }
+
+    public ExecutionException(string message, string sqlStatement, int? sqlErrorNumber = null, Exception? innerException = null)
+        : base(message, sqlErrorNumber, innerException)
+    {
+        SqlStatement = sqlStatement;
+    }
 }

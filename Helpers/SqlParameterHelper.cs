@@ -4,16 +4,15 @@ using Microsoft.Data.SqlClient;
 
 public static class SqlParameterHelper
 {
-    public static SqlParameter[] ToSqlParameters(Dictionary<string, object?> parameters)
+    public static SqlParameter[] ToSqlParameters(IReadOnlyDictionary<string, object?> parameters)
     {
-        if (parameters == null || parameters.Count == 0) return Array.Empty<SqlParameter>();
+        if (parameters == null || parameters.Count == 0)
+            return Array.Empty<SqlParameter>();
 
-        var result = new List<SqlParameter>(parameters.Count);
-        foreach (var kvp in parameters)
+        return parameters.Select(kvp =>
         {
-            var paramName = kvp.Key.StartsWith("@") ? kvp.Key : "@" + kvp.Key;
-            result.Add(new SqlParameter(paramName, kvp.Value ?? DBNull.Value));
-        }
-        return result.ToArray();
+            var paramName = kvp.Key.StartsWith("@") ? kvp.Key : $"@{kvp.Key}";
+            return new SqlParameter(paramName, kvp.Value ?? DBNull.Value);
+        }).ToArray();
     }
 }
