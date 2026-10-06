@@ -1,5 +1,6 @@
+namespace DataSharedLib.Services;
+
 using System.Data;
-using System.Diagnostics;
 using DataSharedLib.Connection;
 using DataSharedLib.Exceptions;
 using DataSharedLib.Helpers;
@@ -7,8 +8,6 @@ using DataSharedLib.Models.Requests;
 using DataSharedLib.Models.Responses;
 using DataSharedLib.Validation;
 using Microsoft.Data.SqlClient;
-
-namespace DataSharedLib.Services;
 
 public class StoredProcedureService : IStoredProcedureService
 {
@@ -21,61 +20,75 @@ public class StoredProcedureService : IStoredProcedureService
         _validator = validator;
     }
 
-    public async Task<StoredProcedureResponse> ExecuteStoredProcedureAsync(StoredProcedureRequest request, CancellationToken cancellationToken = default)
+    public async Task<StoredProcedureResponse> ExecuteAsync(StoredProcedureRequest request, CancellationToken cancellationToken = default)
     {
-        _validator.ValidateStoredProcedure(request);
-        var sw = Stopwatch.StartNew();
+        _validator.ValidateStoredProcedureRequest(request);
+        var watch = System.Diagnostics.Stopwatch.StartNew();
 
-        using var connection = await _connectionFactory.CreateOpenConnectionAsync(cancellationToken);
-        using var command = connection.CreateCommand();
-        command.CommandType = CommandType.StoredProcedure;
-        command.CommandText = request.ProcedureName;
-        if (request.TimeoutSeconds.HasValue) command.CommandTimeout = request.TimeoutSeconds.Value;
-
-        command.Parameters.AddRange(SqlParameterHelper.CreateParameters(request.InputParameters));
-
-        var returnParam = command.Parameters.Add("@ReturnValue", SqlDbType.Int);
-        returnParam.Direction = ParameterDirection.ReturnValue;
-
-        var outSqlParams = new Dictionary<string, SqlParameter>();
-        if (request.OutputParameters != null)
-        {
-            foreach (var kvp in request.OutputParameters)
-            {
-                var paramName = kvp.Key.StartsWith("@") ? kvp.Key : "@" + kvp.Key;
-                var param = command.Parameters.Add(paramName, kvp.Value);
-                param.Direction = ParameterDirection.Output;
-                outSqlParams[kvp.Key] = param;
-            }
-        }
-
-        var dataSet = new DataSet();
         try
         {
-            using var adapter = new SqlDataAdapter(command);
-            adapter.Fill(dataSet);
-        }
-        catch (SqlException ex)
-        {
-            throw new ExecutionException($"Stored procedure execution failed: {ex.Message}", request.ProcedureName, ex, ex.Number);
-        }
+            await using var connection = await _connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+            await using var command = connection.CreateCommand();
+            command.CommandText = _validator.SanitizeIdentifier(request.ProcedureName);
+            command.CommandType = CommandType.StoredProcedure;
+            command.CommandTimeout = request.TimeoutSeconds ?? 30;
 
-        var outputValues = new Dictionary<string, object?>();
-        foreach (var kvp in outSqlParams)
-        {
-            outputValues[kvp.Key] = kvp.Value.Value == DBNull.Value ? null : kvp.Value.Value;
+            if (request.Parameters != null)
+            {
+                command.Parameters.AddRange(SqlParameterHelper.ToSqlParameters(request.Parameters));
+            }
+
+            var outParams = new List<SqlParameter>();
+            if (request.OutputParameters != null)
+            {
+                foreach (var kvp in request.OutputParameters)
+                {
+                    var p = new SqlParameter(kvp.Key, kvp.Value) { Direction = ParameterDirection.Output };
+                    outParams.Add(p);
+                    command.Parameters.Add(p);
+                }
+            }
+
+            var returnParam = command.Parameters.Add(new SqlParameter("@ReturnValue", SqlDbType.Int)
+            {
+                Direction = ParameterDirection.ReturnValue
+            });
+
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            var resultTables = new List<List<Dictionary<string, object?>>>();
+
+            do
+            {
+                var tableRows = new List<Dictionary<string, object?>>();
+                while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+                {
+                    var row = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+                    for (int i = 0; i < reader.FieldCount; i++)
+                    {
+                        var val = reader.GetValue(i);
+                        row[reader.GetName(i)] = val == DBNull.Value ? null : val;
+                    }
+                    tableRows.Add(row);
+                }
+                resultTables.Add(tableRows);
+            } while (await reader.NextResultAsync(cancellationToken).ConfigureAwait(false));
+
+            var outputValues = outParams.ToDictionary(p => p.ParameterName, p => p.Value == DBNull.Value ? null : p.Value);
+            int returnCode = returnParam.Value != DBNull.Value ? (int)returnParam.Value : 0;
+
+            watch.Stop();
+            return new StoredProcedureResponse
+            {
+                Success = true,
+                ReturnCode = returnCode,
+                OutputValues = outputValues,
+                ResultGrids = resultTables,
+                ExecutionTimeMs = watch.ElapsedMilliseconds
+            };
         }
-
-        int returnCode = returnParam.Value is int rc ? rc : 0;
-
-        sw.Stop();
-        return new StoredProcedureResponse
+        catch (Exception ex) when (ex is not DatabaseException)
         {
-            IsSuccess = true,
-            ReturnCode = returnCode,
-            OutputValues = outputValues,
-            ResultSets = dataSet,
-            ElapsedTime = sw.Elapsed
-        };
+            throw new ExecutionException($"Stored procedure execution failed: {ex.Message}", ex);
+        }
     }
 }

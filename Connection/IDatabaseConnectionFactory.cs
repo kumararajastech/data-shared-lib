@@ -1,10 +1,9 @@
-using System.Data.Common;
-using Microsoft.Data.SqlClient;
-
 namespace DataSharedLib.Connection;
+
+using Microsoft.Data.SqlClient;
 
 public interface IDatabaseConnectionFactory
 {
     SqlConnection CreateConnection();
-    Task<SqlConnection> CreateOpenConnectionAsync(CancellationToken cancellationToken = default);
+    Task<SqlConnection> OpenConnectionAsync(CancellationToken cancellationToken = default);
 }

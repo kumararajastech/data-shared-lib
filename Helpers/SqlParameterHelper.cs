@@ -1,25 +1,19 @@
-using System.Data;
-using Microsoft.Data.SqlClient;
-
 namespace DataSharedLib.Helpers;
+
+using Microsoft.Data.SqlClient;
 
 public static class SqlParameterHelper
 {
-    public static SqlParameter[] CreateParameters(IDictionary<string, object?>? parameters)
+    public static SqlParameter[] ToSqlParameters(Dictionary<string, object?> parameters)
     {
-        if (parameters == null || parameters.Count == 0)
-        {
-            return Array.Empty<SqlParameter>();
-        }
+        if (parameters == null || parameters.Count == 0) return Array.Empty<SqlParameter>();
 
-        var sqlParams = new List<SqlParameter>(parameters.Count);
+        var result = new List<SqlParameter>(parameters.Count);
         foreach (var kvp in parameters)
         {
             var paramName = kvp.Key.StartsWith("@") ? kvp.Key : "@" + kvp.Key;
-            var paramValue = kvp.Value ?? DBNull.Value;
-            sqlParams.Add(new SqlParameter(paramName, paramValue));
+            result.Add(new SqlParameter(paramName, kvp.Value ?? DBNull.Value));
         }
-
-        return sqlParams.ToArray();
+        return result.ToArray();
     }
 }

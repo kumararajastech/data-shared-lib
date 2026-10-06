@@ -68,6 +68,10 @@
             "Microsoft.Extensions.Options": {
               "target": "Package",
               "version": "[9.0.0, )"
+            },
+            "Microsoft.Extensions.Options.ConfigurationExtensions": {
+              "target": "Package",
+              "version": "[9.0.0, )"
             }
           },
           "imports": [

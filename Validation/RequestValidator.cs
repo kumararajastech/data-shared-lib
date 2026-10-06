@@ -1,65 +1,92 @@
-using DataSharedLib.Models.Requests;
-
 namespace DataSharedLib.Validation;
+
+using System.Text.RegularExpressions;
+using DataSharedLib.Exceptions;
+using DataSharedLib.Models.Requests;
 
 public class RequestValidator : IRequestValidator
 {
-    public void ValidateExecuteQuery(ExecuteQueryRequest request)
+    private static readonly Regex IdentifierRegex = new(@"^[a-zA-Z0-9_\[\]\.]+$", RegexOptions.Compiled);
+
+    public void ValidateReadRequest(ReadRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
-        if (string.IsNullOrWhiteSpace(request.CommandText))
-            throw new ArgumentException("CommandText cannot be empty.", nameof(request));
+        ValidateTableIdentifier(request.TableName);
     }
 
-    public void ValidateRead(ReadRequest request)
+    public void ValidateCreateRequest(CreateRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
-        if (string.IsNullOrWhiteSpace(request.TableName))
-            throw new ArgumentException("TableName cannot be empty.", nameof(request));
+        ValidateTableIdentifier(request.TableName);
+        if (request.ColumnValues == null || !request.ColumnValues.Any())
+        {
+            throw new DatabaseException("CreateRequest must contain at least one column value.");
+        }
     }
 
-    public void ValidateCreate(CreateRequest request)
+    public void ValidateUpdateRequest(UpdateRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
-        if (string.IsNullOrWhiteSpace(request.TableName))
-            throw new ArgumentException("TableName cannot be empty.", nameof(request));
-        if (request.ColumnValues == null || request.ColumnValues.Count == 0)
-            throw new ArgumentException("ColumnValues must contain at least one field.", nameof(request));
-    }
-
-    public void ValidateBulkCreate(BulkCreateRequest request)
-    {
-        ArgumentNullException.ThrowIfNull(request);
-        if (string.IsNullOrWhiteSpace(request.DestinationTableName))
-            throw new ArgumentException("DestinationTableName cannot be empty.", nameof(request));
-        if (request.DataTable == null)
-            throw new ArgumentException("DataTable cannot be null.", nameof(request));
-    }
-
-    public void ValidateUpdate(UpdateRequest request)
-    {
-        ArgumentNullException.ThrowIfNull(request);
-        if (string.IsNullOrWhiteSpace(request.TableName))
-            throw new ArgumentException("TableName cannot be empty.", nameof(request));
-        if (request.ColumnValues == null || request.ColumnValues.Count == 0)
-            throw new ArgumentException("ColumnValues must contain at least one field.", nameof(request));
+        ValidateTableIdentifier(request.TableName);
+        if (request.ColumnValues == null || !request.ColumnValues.Any())
+        {
+            throw new DatabaseException("UpdateRequest must contain at least one column value to update.");
+        }
         if (string.IsNullOrWhiteSpace(request.WhereClause))
-            throw new ArgumentException("WhereClause is required for Update operations to prevent accidental table-wide updates.", nameof(request));
+        {
+            throw new DatabaseException("UpdateRequest must specify a WhereClause to prevent unconstrained updates.");
+        }
     }
 
-    public void ValidateDelete(DeleteRequest request)
+    public void ValidateDeleteRequest(DeleteRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
-        if (string.IsNullOrWhiteSpace(request.TableName))
-            throw new ArgumentException("TableName cannot be empty.", nameof(request));
+        ValidateTableIdentifier(request.TableName);
         if (string.IsNullOrWhiteSpace(request.WhereClause))
-            throw new ArgumentException("WhereClause is required for Delete operations to prevent accidental table-wide deletes.", nameof(request));
+        {
+            throw new DatabaseException("DeleteRequest must specify a WhereClause to prevent unconstrained deletions.");
+        }
     }
 
-    public void ValidateStoredProcedure(StoredProcedureRequest request)
+    public void ValidateExecuteQueryRequest(ExecuteQueryRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
-        if (string.IsNullOrWhiteSpace(request.ProcedureName))
-            throw new ArgumentException("ProcedureName cannot be empty.", nameof(request));
+        if (string.IsNullOrWhiteSpace(request.SqlText))
+        {
+            throw new DatabaseException("ExecuteQueryRequest must contain non-empty SqlText.");
+        }
+    }
+
+    public void ValidateBulkCreateRequest(BulkCreateRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ValidateTableIdentifier(request.TableName);
+        ArgumentNullException.ThrowIfNull(request.DataTable);
+    }
+
+    public void ValidateStoredProcedureRequest(StoredProcedureRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ValidateTableIdentifier(request.ProcedureName);
+    }
+
+    public string SanitizeIdentifier(string identifier)
+    {
+        if (string.IsNullOrWhiteSpace(identifier)) return string.Empty;
+        var trimmed = identifier.Trim();
+        if (!IdentifierRegex.IsMatch(trimmed))
+        {
+            throw new DatabaseException($"Invalid database identifier name: '{identifier}'");
+        }
+        return trimmed;
+    }
+
+    private void ValidateTableIdentifier(string tableName)
+    {
+        if (string.IsNullOrWhiteSpace(tableName))
+        {
+            throw new DatabaseException("Table or procedure name cannot be null or empty.");
+        }
+        SanitizeIdentifier(tableName);
     }
 }

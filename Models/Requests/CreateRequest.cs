@@ -2,7 +2,7 @@ namespace DataSharedLib.Models.Requests;
 
 public class CreateRequest
 {
-    public string TableName { get; set; } = string.Empty;
-    public IDictionary<string, object?> ColumnValues { get; set; } = new Dictionary<string, object?>();
+    public required string TableName { get; set; }
+    public required Dictionary<string, object?> ColumnValues { get; set; }
     public bool ReturnIdentity { get; set; } = true;
 }

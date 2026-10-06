@@ -1,8 +1,8 @@
 namespace DataSharedLib.Models.Responses;
 
-public class QueryResponse<T>
+public class QueryResponse
 {
-    public IEnumerable<T> Records { get; set; } = Enumerable.Empty<T>();
+    public IEnumerable<Dictionary<string, object?>> Rows { get; set; } = [];
     public int TotalCount { get; set; }
-    public TimeSpan ElapsedTime { get; set; }
+    public long ExecutionTimeMs { get; set; }
 }

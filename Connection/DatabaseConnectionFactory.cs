@@ -1,9 +1,8 @@
-using System.Data;
+namespace DataSharedLib.Connection;
+
 using DataSharedLib.Exceptions;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Options;
-
-namespace DataSharedLib.Connection;
 
 public class DatabaseConnectionFactory : IDatabaseConnectionFactory
 {
@@ -14,27 +13,36 @@ public class DatabaseConnectionFactory : IDatabaseConnectionFactory
         _options = options.Value ?? throw new ArgumentNullException(nameof(options));
         if (string.IsNullOrWhiteSpace(_options.ConnectionString))
         {
-            throw new ArgumentException("ConnectionString must be provided in DatabaseConnectionOptions.", nameof(options));
+            throw new ConnectionException("Database connection string is not configured.");
         }
     }
 
-    public SqlConnection CreateConnection()
-    {
-        return new SqlConnection(_options.ConnectionString);
-    }
+    public SqlConnection CreateConnection() => new(_options.ConnectionString);
 
-    public async Task<SqlConnection> CreateOpenConnectionAsync(CancellationToken cancellationToken = default)
+    public async Task<SqlConnection> OpenConnectionAsync(CancellationToken cancellationToken = default)
     {
         var connection = CreateConnection();
-        try
+        var attempts = 0;
+
+        while (true)
         {
-            await connection.OpenAsync(cancellationToken);
-            return connection;
-        }
-        catch (SqlException ex)
-        {
-            await connection.DisposeAsync();
-            throw new ConnectionException($"Failed to open connection to SQL Server: {ex.Message}", ex, ex.Number);
+            try
+            {
+                attempts++;
+                await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+                return connection;
+            }
+            catch (SqlException ex) when (attempts <= _options.MaxRetryCount)
+            {
+                await connection.DisposeAsync().ConfigureAwait(false);
+                await Task.Delay(_options.RetryIntervalMs, cancellationToken).ConfigureAwait(false);
+                connection = CreateConnection();
+            }
+            catch (Exception ex)
+            {
+                await connection.DisposeAsync().ConfigureAwait(false);
+                throw new ConnectionException($"Failed to open database connection after {attempts} attempt(s).", ex);
+            }
         }
     }
 }

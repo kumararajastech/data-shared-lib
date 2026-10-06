@@ -1,0 +1,24 @@
+## Visual Studio / IDE
+.vs/
+.idea/
+.vscode/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+## Build Outputs & Binaries
+[Bb]in/
+[Oo]bj/
+out/
+publish/
+*.nupkg
+*.snupkg
+
+## Test Results & Coverage
+TestResults/
+*.changelog
+
+## OS Files
+.DS_Store
+Thumbs.db

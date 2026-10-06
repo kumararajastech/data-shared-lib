@@ -1,4 +1,5 @@
-using System.Diagnostics;
+namespace DataSharedLib.Services;
+
 using System.Text;
 using DataSharedLib.Connection;
 using DataSharedLib.Exceptions;
@@ -7,8 +8,6 @@ using DataSharedLib.Models.Requests;
 using DataSharedLib.Models.Responses;
 using DataSharedLib.Validation;
 using Microsoft.Data.SqlClient;
-
-namespace DataSharedLib.Services;
 
 public class DatabaseCrudService : IDatabaseCrudService
 {
@@ -21,16 +20,17 @@ public class DatabaseCrudService : IDatabaseCrudService
         _validator = validator;
     }
 
-    public async Task<QueryResponse<IDictionary<string, object?>>> ReadAsync(ReadRequest request, CancellationToken cancellationToken = default)
+    public async Task<QueryResponse> ReadAsync(ReadRequest request, CancellationToken cancellationToken = default)
     {
-        _validator.ValidateRead(request);
-        var sw = Stopwatch.StartNew();
+        _validator.ValidateReadRequest(request);
+        var watch = System.Diagnostics.Stopwatch.StartNew();
 
-        var cols = (request.SelectColumns != null && request.SelectColumns.Any()) 
-            ? string.Join(", ", request.SelectColumns) 
+        var cols = request.SelectColumns != null && request.SelectColumns.Any()
+            ? string.Join(", ", request.SelectColumns.Select(_validator.SanitizeIdentifier))
             : "*";
 
-        var sb = new StringBuilder($"SELECT {cols} FROM {request.TableName}");
+        var sb = new StringBuilder($"SELECT {cols} FROM {_validator.SanitizeIdentifier(request.TableName)}");
+
         if (!string.IsNullOrWhiteSpace(request.WhereClause))
         {
             sb.Append($" WHERE {request.WhereClause}");
@@ -39,164 +39,170 @@ public class DatabaseCrudService : IDatabaseCrudService
         if (!string.IsNullOrWhiteSpace(request.OrderBy))
         {
             sb.Append($" ORDER BY {request.OrderBy}");
-            if (request.PageNumber.HasValue && request.PageSize.HasValue)
-            {
-                int offset = (request.PageNumber.Value - 1) * request.PageSize.Value;
-                sb.Append($" OFFSET {offset} ROWS FETCH NEXT {request.PageSize.Value} ROWS ONLY");
-            }
         }
 
-        using var connection = await _connectionFactory.CreateOpenConnectionAsync(cancellationToken);
-        using var command = connection.CreateCommand();
-        command.CommandText = sb.ToString();
-        command.Parameters.AddRange(SqlParameterHelper.CreateParameters(request.Parameters));
+        if (request.PageNumber.HasValue && request.PageSize.HasValue)
+        {
+            if (string.IsNullOrWhiteSpace(request.OrderBy))
+            {
+                sb.Append(" ORDER BY (SELECT NULL)");
+            }
+            var offset = (request.PageNumber.Value - 1) * request.PageSize.Value;
+            sb.Append($" OFFSET {offset} ROWS FETCH NEXT {request.PageSize.Value} ROWS ONLY");
+        }
 
-        var list = new List<IDictionary<string, object?>>();
         try
         {
-            using var reader = await command.ExecuteReaderAsync(cancellationToken);
-            while (await reader.ReadAsync(cancellationToken))
+            await using var connection = await _connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+            await using var command = connection.CreateCommand();
+            command.CommandText = sb.ToString();
+
+            if (request.Parameters != null)
             {
-                var dict = new Dictionary<string, object?>(reader.FieldCount);
+                command.Parameters.AddRange(SqlParameterHelper.ToSqlParameters(request.Parameters));
+            }
+
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            var rows = new List<Dictionary<string, object?>>();
+
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                var row = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
                 for (int i = 0; i < reader.FieldCount; i++)
                 {
-                    dict[reader.GetName(i)] = reader.IsDBNull(i) ? null : reader.GetValue(i);
+                    var val = reader.GetValue(i);
+                    row[reader.GetName(i)] = val == DBNull.Value ? null : val;
                 }
-                list.Add(dict);
+                rows.Add(row);
             }
-        }
-        catch (SqlException ex)
-        {
-            throw new ExecutionException($"ReadAsync operation failed: {ex.Message}", command.CommandText, ex, ex.Number);
-        }
 
-        sw.Stop();
-        return new QueryResponse<IDictionary<string, object?>>
+            watch.Stop();
+            return new QueryResponse { Rows = rows, TotalCount = rows.Count, ExecutionTimeMs = watch.ElapsedMilliseconds };
+        }
+        catch (Exception ex) when (ex is not DatabaseException)
         {
-            Records = list,
-            TotalCount = list.Count,
-            ElapsedTime = sw.Elapsed
-        };
+            throw new ExecutionException($"Read operation failed: {ex.Message}", ex);
+        }
     }
 
     public async Task<OperationResponse> CreateAsync(CreateRequest request, CancellationToken cancellationToken = default)
     {
-        _validator.ValidateCreate(request);
-        var sw = Stopwatch.StartNew();
+        _validator.ValidateCreateRequest(request);
+        var watch = System.Diagnostics.Stopwatch.StartNew();
 
-        var colNames = string.Join(", ", request.ColumnValues.Keys);
-        var paramNames = string.Join(", ", request.ColumnValues.Keys.Select(k => "@" + k));
+        var sanitizedTable = _validator.SanitizeIdentifier(request.TableName);
+        var keys = request.ColumnValues.Keys.Select(_validator.SanitizeIdentifier).ToList();
+        var paramNames = keys.Select((k, idx) => $"@p{idx}").ToList();
 
-        var sql = $"INSERT INTO {request.TableName} ({colNames}) VALUES ({paramNames});";
+        var sb = new StringBuilder($"INSERT INTO {sanitizedTable} ({string.Join(", ", keys)}) VALUES ({string.Join(", ", paramNames)});");
         if (request.ReturnIdentity)
         {
-            sql += " SELECT SCOPE_IDENTITY();";
+            sb.Append(" SELECT SCOPE_IDENTITY();");
         }
 
-        using var connection = await _connectionFactory.CreateOpenConnectionAsync(cancellationToken);
-        using var command = connection.CreateCommand();
-        command.CommandText = sql;
-        command.Parameters.AddRange(SqlParameterHelper.CreateParameters(request.ColumnValues));
-
-        object? identityValue = null;
-        int rows = 0;
         try
         {
+            await using var connection = await _connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+            await using var command = connection.CreateCommand();
+            command.CommandText = sb.ToString();
+
+            int idx = 0;
+            foreach (var kvp in request.ColumnValues)
+            {
+                command.Parameters.AddWithValue($"@p{idx++}", kvp.Value ?? DBNull.Value);
+            }
+
+            object? primaryKey = null;
+            int rowsAffected;
+
             if (request.ReturnIdentity)
             {
-                identityValue = await command.ExecuteScalarAsync(cancellationToken);
-                rows = identityValue != null && identityValue != DBNull.Value ? 1 : 0;
+                primaryKey = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
+                rowsAffected = primaryKey != null ? 1 : 0;
             }
             else
             {
-                rows = await command.ExecuteNonQueryAsync(cancellationToken);
+                rowsAffected = await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
             }
-        }
-        catch (SqlException ex)
-        {
-            throw new ExecutionException($"CreateAsync failed: {ex.Message}", sql, ex, ex.Number);
-        }
 
-        sw.Stop();
-        return new OperationResponse
+            watch.Stop();
+            return new OperationResponse { Success = true, RowsAffected = rowsAffected, GeneratedPrimaryKey = primaryKey, ExecutionTimeMs = watch.ElapsedMilliseconds };
+        }
+        catch (Exception ex) when (ex is not DatabaseException)
         {
-            IsSuccess = true,
-            RowsAffected = rows,
-            PrimaryKeyId = identityValue,
-            ElapsedTime = sw.Elapsed
-        };
+            throw new ExecutionException($"Create operation failed: {ex.Message}", ex);
+        }
     }
 
     public async Task<OperationResponse> UpdateAsync(UpdateRequest request, CancellationToken cancellationToken = default)
     {
-        _validator.ValidateUpdate(request);
-        var sw = Stopwatch.StartNew();
+        _validator.ValidateUpdateRequest(request);
+        var watch = System.Diagnostics.Stopwatch.StartNew();
 
-        var setClauses = string.Join(", ", request.ColumnValues.Keys.Select(k => $"{k} = @val_{k}"));
-        var sql = $"UPDATE {request.TableName} SET {setClauses} WHERE {request.WhereClause};";
+        var sanitizedTable = _validator.SanitizeIdentifier(request.TableName);
+        var setClauses = new List<string>();
+        var parameters = new List<SqlParameter>();
 
-        var mergedParams = new Dictionary<string, object?>();
+        int idx = 0;
         foreach (var kvp in request.ColumnValues)
         {
-            mergedParams[$"val_{kvp.Key}"] = kvp.Value;
+            var paramName = $"@set_{idx++}";
+            setClauses.Add($"{_validator.SanitizeIdentifier(kvp.Key)} = {paramName}");
+            parameters.Add(new SqlParameter(paramName, kvp.Value ?? DBNull.Value));
         }
-        foreach (var kvp in request.WhereParameters)
+
+        var sb = new StringBuilder($"UPDATE {sanitizedTable} SET {string.Join(", ", setClauses)} WHERE {request.WhereClause}");
+
+        if (request.Parameters != null)
         {
-            mergedParams[kvp.Key] = kvp.Value;
+            parameters.AddRange(SqlParameterHelper.ToSqlParameters(request.Parameters));
         }
 
-        using var connection = await _connectionFactory.CreateOpenConnectionAsync(cancellationToken);
-        using var command = connection.CreateCommand();
-        command.CommandText = sql;
-        command.Parameters.AddRange(SqlParameterHelper.CreateParameters(mergedParams));
-
-        int rows;
         try
         {
-            rows = await command.ExecuteNonQueryAsync(cancellationToken);
-        }
-        catch (SqlException ex)
-        {
-            throw new ExecutionException($"UpdateAsync failed: {ex.Message}", sql, ex, ex.Number);
-        }
+            await using var connection = await _connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+            await using var command = connection.CreateCommand();
+            command.CommandText = sb.ToString();
+            command.Parameters.AddRange(parameters.ToArray());
 
-        sw.Stop();
-        return new OperationResponse
+            int rowsAffected = await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            watch.Stop();
+
+            return new OperationResponse { Success = true, RowsAffected = rowsAffected, ExecutionTimeMs = watch.ElapsedMilliseconds };
+        }
+        catch (Exception ex) when (ex is not DatabaseException)
         {
-            IsSuccess = true,
-            RowsAffected = rows,
-            ElapsedTime = sw.Elapsed
-        };
+            throw new ExecutionException($"Update operation failed: {ex.Message}", ex);
+        }
     }
 
     public async Task<OperationResponse> DeleteAsync(DeleteRequest request, CancellationToken cancellationToken = default)
     {
-        _validator.ValidateDelete(request);
-        var sw = Stopwatch.StartNew();
+        _validator.ValidateDeleteRequest(request);
+        var watch = System.Diagnostics.Stopwatch.StartNew();
 
-        var sql = $"DELETE FROM {request.TableName} WHERE {request.WhereClause};";
+        var sanitizedTable = _validator.SanitizeIdentifier(request.TableName);
+        var sb = new StringBuilder($"DELETE FROM {sanitizedTable} WHERE {request.WhereClause}");
 
-        using var connection = await _connectionFactory.CreateOpenConnectionAsync(cancellationToken);
-        using var command = connection.CreateCommand();
-        command.CommandText = sql;
-        command.Parameters.AddRange(SqlParameterHelper.CreateParameters(request.Parameters));
-
-        int rows;
         try
         {
-            rows = await command.ExecuteNonQueryAsync(cancellationToken);
-        }
-        catch (SqlException ex)
-        {
-            throw new ExecutionException($"DeleteAsync failed: {ex.Message}", sql, ex, ex.Number);
-        }
+            await using var connection = await _connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+            await using var command = connection.CreateCommand();
+            command.CommandText = sb.ToString();
 
-        sw.Stop();
-        return new OperationResponse
+            if (request.Parameters != null)
+            {
+                command.Parameters.AddRange(SqlParameterHelper.ToSqlParameters(request.Parameters));
+            }
+
+            int rowsAffected = await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            watch.Stop();
+
+            return new OperationResponse { Success = true, RowsAffected = rowsAffected, ExecutionTimeMs = watch.ElapsedMilliseconds };
+        }
+        catch (Exception ex) when (ex is not DatabaseException)
         {
-            IsSuccess = true,
-            RowsAffected = rows,
-            ElapsedTime = sw.Elapsed
-        };
+            throw new ExecutionException($"Delete operation failed: {ex.Message}", ex);
+        }
     }
 }

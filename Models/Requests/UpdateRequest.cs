@@ -2,8 +2,8 @@ namespace DataSharedLib.Models.Requests;
 
 public class UpdateRequest
 {
-    public string TableName { get; set; } = string.Empty;
-    public IDictionary<string, object?> ColumnValues { get; set; } = new Dictionary<string, object?>();
-    public string WhereClause { get; set; } = string.Empty;
-    public IDictionary<string, object?> WhereParameters { get; set; } = new Dictionary<string, object?>();
+    public required string TableName { get; set; }
+    public required Dictionary<string, object?> ColumnValues { get; set; }
+    public required string WhereClause { get; set; }
+    public Dictionary<string, object?>? Parameters { get; set; }
 }

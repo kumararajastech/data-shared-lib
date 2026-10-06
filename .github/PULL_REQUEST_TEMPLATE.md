@@ -1,13 +1,11 @@
-## Summary
-Clear summary of changes introduced by this pull request.
+## Description
+Briefly describe the changes introduced by this pull request.
 
-## Type of Change
-- [ ] Bug fix
-- [ ] New feature
-- [ ] Breaking change
-- [ ] Documentation update
+## Related Issues
+Closes #
 
 ## Checklist
-- [ ] Code compiles targeting `.NET 10`.
-- [ ] Unit/Integration tests pass.
-- [ ] Code follows project formatting and namespace conventions (`DataSharedLib.*`).
+- [ ] Code builds cleanly on .NET 10 with zero warnings.
+- [ ] Added/updated unit tests covering new features or bug fixes.
+- [ ] Updated XML documentation comments for public interfaces/classes.
+- [ ] Verified compliance with guidelines in `AGENTS.md`.

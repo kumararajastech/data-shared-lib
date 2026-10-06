@@ -1,11 +1,11 @@
-using System.Data;
-
 namespace DataSharedLib.Models.Requests;
+
+using System.Data;
 
 public class StoredProcedureRequest
 {
-    public string ProcedureName { get; set; } = string.Empty;
-    public IDictionary<string, object?> InputParameters { get; set; } = new Dictionary<string, object?>();
-    public IDictionary<string, SqlDbType> OutputParameters { get; set; } = new Dictionary<string, SqlDbType>();
+    public required string ProcedureName { get; set; }
+    public Dictionary<string, object?>? Parameters { get; set; }
+    public Dictionary<string, SqlDbType>? OutputParameters { get; set; }
     public int? TimeoutSeconds { get; set; }
 }
